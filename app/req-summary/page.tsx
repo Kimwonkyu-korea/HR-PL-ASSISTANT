@@ -12,7 +12,7 @@ interface CompanyGroup {
   content: string
 }
 
-type CondType = 'combo' | 'popup' | 'text' | 'date' | 'date-range'
+type CondType = 'combo' | 'popup' | 'text' | 'date' | 'date-range' | 'sabun/name'
 
 interface SearchCond {
   label: string
@@ -44,6 +44,7 @@ const COND_TYPE_LABELS: Record<CondType, string> = {
   'text': '텍스트',
   'date': '날짜(단일)',
   'date-range': '날짜범위(from~to)',
+  'sabun/name': '사번/이름',
 }
 
 const DEFAULT_CONDITIONS: SearchCond[] = []

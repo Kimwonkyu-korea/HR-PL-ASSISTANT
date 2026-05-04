@@ -52,7 +52,7 @@ export default function MinutesPage() {
 
   function addAttendee() {
     const names = attendeeInput.split(',').map((s) => s.trim()).filter(Boolean)
-    setAttendees((prev) => [...new Set([...prev, ...names])])
+    setAttendees((prev) => Array.from(new Set([...prev, ...names])))
     setAttendeeInput('')
   }
 
