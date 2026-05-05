@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Eye, EyeOff, Trash2, Check } from 'lucide-react'
+import { Eye, EyeOff, Trash2, Check, LogOut } from 'lucide-react'
 import { useStore } from '@/lib/store'
+import { SettingsGuard } from '@/components/auth/SettingsGuard'
+import { clearSession } from '@/lib/auth'
 
 const SYSTEM_TYPES = ['ERP', '자체개발', '클라우드 SaaS', '기타']
 
@@ -37,8 +39,18 @@ export default function SettingsPage() {
   ]
 
   return (
+    <SettingsGuard>
     <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-xl font-bold text-gray-900">⚙ 설정</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-gray-900">⚙ 설정</h1>
+        <button
+          onClick={() => { clearSession(); window.location.href = '/' }}
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-600 transition-colors"
+        >
+          <LogOut size={15} />
+          로그아웃
+        </button>
+      </div>
 
       {/* 프로젝트 기본 정보 */}
       <div className="card p-6 space-y-4">
@@ -293,5 +305,6 @@ export default function SettingsPage() {
         </button>
       </div>
     </div>
+    </SettingsGuard>
   )
 }
