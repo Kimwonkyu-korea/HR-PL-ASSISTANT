@@ -16,10 +16,12 @@ interface FormField {
 
 interface GridCol {
   id: string
-  name: string
+  name: string           // 1줄(row1) 헤더
+  row2?: string          // 2줄(row2) 헤더 — 비거나 name과 같으면 세로병합
   type: string
   width: number
   required: boolean
+  headerColor: HeaderColor
 }
 
 const FIELD_TYPES = [
@@ -50,6 +52,13 @@ const TOOLBAR_BTNS = [
   { key: '저장',         label: '저장',         primary: true,  group: 'B' },
   { key: '다운로드',     label: '다운로드',     primary: false, group: 'B' },
 ]
+
+const HEADER_COLORS = {
+  blue: { bg: '#e8eefd', border: '#123690', text: '#40484d' },
+  pink: { bg: '#fde8f0', border: '#a3174d', text: '#4d1030' },
+  gray: { bg: '#e8eaed', border: '#5c6680', text: '#40484d' },
+} as const
+type HeaderColor = keyof typeof HEADER_COLORS
 
 function uid() { return Math.random().toString(36).slice(2, 9) }
 
@@ -188,9 +197,43 @@ function FormPreview({ title, fields, maxCols }: { title: string; fields: FormFi
 }
 
 // ─── 그리드 미리보기 (IDS ids-list-container + IBSheet 스킨) ────────
-function GridPreview({ title, cols, buttons }: { title: string; cols: GridCol[]; buttons: string[] }) {
+function GridPreview({ title, cols, buttons, headerRows = 1 }: {
+  title: string; cols: GridCol[]; buttons: string[]; headerRows?: 1 | 2
+}) {
   const MOCK_ROWS = 5
-  const displayCols = cols.length > 0 ? cols : [{ id: 'ph', name: '컬럼을 추가하세요', type: 'text', width: 200, required: false }]
+  const Ph: GridCol = { id: 'ph', name: '컬럼을 추가하세요', type: 'text', width: 200, required: false, headerColor: 'blue' }
+  const displayCols = cols.length > 0 ? cols : [Ph]
+
+  // 2줄 모드: prop으로 제어, 실제 row2 값이 달라야 효과 있음
+  const has2Row = headerRows === 2
+
+  // row1 세그먼트 빌드:
+  //  - 인접 동일 name → colspan(가로병합)
+  //  - 단독 컬럼(row2 없거나 == name) → rowspan=2(세로병합)
+  //  - 단독 컬럼(row2 != name) → row1/row2 각각 표시
+  type Seg =
+    | { kind: 'merge'; col: GridCol }            // 세로병합: rowspan=2
+    | { kind: 'split'; col: GridCol }            // row1 / row2 별도
+    | { kind: 'group'; name: string; children: GridCol[]; firstColor: HeaderColor }  // 가로병합: colspan
+  const segments = (() => {
+    const res: Seg[] = []
+    let i = 0
+    while (i < displayCols.length) {
+      const col = displayCols[i]
+      // 인접 동일 name 탐색
+      let j = i + 1
+      while (j < displayCols.length && displayCols[j].name === col.name) j++
+      if (j - i > 1) {
+        res.push({ kind: 'group', name: col.name, children: displayCols.slice(i, j), firstColor: col.headerColor })
+        i = j
+      } else {
+        const isMerged = !col.row2 || col.row2 === col.name
+        res.push({ kind: isMerged ? 'merge' : 'split', col })
+        i++
+      }
+    }
+    return res
+  })()
 
   const Btn = ({ label, primary }: { label: string; primary?: boolean }) => (
     <div style={{
@@ -206,6 +249,22 @@ function GridPreview({ title, cols, buttons }: { title: string; cols: GridCol[];
   const activeA = TOOLBAR_BTNS.filter(b => b.group === 'A' && buttons.includes(b.key))
   const activeB = TOOLBAR_BTNS.filter(b => b.group === 'B' && buttons.includes(b.key))
   const showDivider = activeA.length > 0 && activeB.length > 0
+
+  // 컬럼별 색상 적용 th 스타일
+  function thStyle(color: HeaderColor, extra?: React.CSSProperties): React.CSSProperties {
+    const hc = HEADER_COLORS[color]
+    return {
+      background: hc.bg, color: hc.text,
+      borderRight: '1px solid rgba(255,255,255,0.6)',
+      borderBottom: `1px solid ${hc.border}`,
+      padding: '0 8px', textAlign: 'center',
+      fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
+      ...extra,
+    }
+  }
+
+  // 전체 상단 테두리용 대표 색 (첫 컬럼 기준)
+  const topBorderColor = HEADER_COLORS[displayCols[0]?.headerColor ?? 'blue'].border
 
   return (
     <div style={{
@@ -226,30 +285,72 @@ function GridPreview({ title, cols, buttons }: { title: string; cols: GridCol[];
           {activeB.map(b => <Btn key={b.key} label={b.label} primary={b.primary} />)}
         </div>
       </div>
-      {/* IBSheet 그리드 — border-top: 1px solid #123690 (primary-30) */}
+      {/* IBSheet 그리드 */}
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', minWidth: '100%', borderTop: '1px solid #123690' }}>
+        <table style={{ borderCollapse: 'collapse', minWidth: '100%', borderTop: `2px solid ${topBorderColor}` }}>
           <thead>
+            {/* ── Row 1 ── */}
             <tr style={{ height: 28 }}>
-              <th style={{
-                background: '#e8eefd', color: '#40484d',
-                borderRight: '1px solid #ffffff', borderBottom: '1px solid #123690',
-                padding: '0 6px', textAlign: 'center', width: 36,
-                fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-              }}>No</th>
-              {displayCols.map(col => (
-                <th key={col.id} style={{
-                  background: '#e8eefd', color: '#40484d',
-                  borderRight: '1px solid #ffffff', borderBottom: '1px solid #123690',
-                  padding: '0 8px', textAlign: 'center',
-                  width: col.width, minWidth: col.width,
-                  fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-                }}>
-                  {col.required && <span style={{ color: '#e2465d', marginRight: 2 }}>*</span>}
-                  {col.name || '컬럼'}
-                </th>
-              ))}
+              <th style={thStyle('blue', { width: 36 })} rowSpan={has2Row ? 2 : 1}>No</th>
+              {segments.map((seg, si) => {
+                if (seg.kind === 'merge') {
+                  return (
+                    <th key={seg.col.id}
+                      style={thStyle(seg.col.headerColor, { width: seg.col.width, minWidth: seg.col.width })}
+                      rowSpan={has2Row ? 2 : 1}>
+                      {seg.col.required && <span style={{ color: '#e2465d', marginRight: 2 }}>*</span>}
+                      {seg.col.name || '컬럼'}
+                    </th>
+                  )
+                }
+                if (seg.kind === 'split') {
+                  return (
+                    <th key={seg.col.id}
+                      style={thStyle(seg.col.headerColor, {
+                        width: seg.col.width, minWidth: seg.col.width,
+                        borderBottom: `1px solid ${HEADER_COLORS[seg.col.headerColor].border}60`,
+                      })}>
+                      {seg.col.required && <span style={{ color: '#e2465d', marginRight: 2 }}>*</span>}
+                      {seg.col.name || '컬럼'}
+                    </th>
+                  )
+                }
+                // group: colspan
+                return (
+                  <th key={`grp-${si}`} colSpan={seg.children.length}
+                    style={thStyle(seg.firstColor, {
+                      borderBottom: `1px solid ${HEADER_COLORS[seg.firstColor].border}60`,
+                    })}>
+                    {seg.name}
+                  </th>
+                )
+              })}
             </tr>
+            {/* ── Row 2 (2줄 모드일 때만) ── */}
+            {has2Row && (
+              <tr style={{ height: 24 }}>
+                {segments.flatMap(seg => {
+                  if (seg.kind === 'merge') return []   // rowspan=2 로 이미 차지
+                  if (seg.kind === 'split') {
+                    return [(
+                      <th key={seg.col.id}
+                        style={thStyle(seg.col.headerColor, { width: seg.col.width, minWidth: seg.col.width, fontSize: 11 })}>
+                        {seg.col.required && <span style={{ color: '#e2465d', marginRight: 2 }}>*</span>}
+                        {seg.col.row2}
+                      </th>
+                    )]
+                  }
+                  // group children
+                  return seg.children.map(col => (
+                    <th key={col.id}
+                      style={thStyle(col.headerColor, { width: col.width, minWidth: col.width, fontSize: 11 })}>
+                      {col.required && <span style={{ color: '#e2465d', marginRight: 2 }}>*</span>}
+                      {col.row2 || col.name}
+                    </th>
+                  ))
+                })}
+              </tr>
+            )}
           </thead>
           <tbody>
             {Array.from({ length: MOCK_ROWS }).map((_, ri) => (
@@ -284,9 +385,10 @@ export default function ScreenPreviewPage() {
     { id: uid(), label: '', type: 'text', required: false, span: 1 },
   ])
   const [gridCols, setGridCols] = useState<GridCol[]>([
-    { id: uid(), name: '', type: 'text', width: 120, required: false },
+    { id: uid(), name: '', type: 'text', width: 120, required: false, headerColor: 'blue' },
   ])
-  const [gridBtns, setGridBtns] = useState<string[]>(TOOLBAR_BTNS.map(b => b.key))
+  const [gridBtns, setGridBtns] = useState<string[]>(['입력', '복사', '저장', '다운로드'])
+  const [gridHeaderRows, setGridHeaderRows] = useState<1 | 2>(1)
   const previewRef = useRef<HTMLDivElement>(null)
   const [downloading, setDownloading] = useState(false)
 
@@ -304,7 +406,7 @@ export default function ScreenPreviewPage() {
   }
 
   // 그리드 컬럼 핸들러
-  function addCol() { setGridCols(p => [...p, { id: uid(), name: '', type: 'text', width: 120, required: false }]) }
+  function addCol() { setGridCols(p => [...p, { id: uid(), name: '', type: 'text', width: 120, required: false, headerColor: 'blue' as HeaderColor }]) }
   function removeCol(id: string) { setGridCols(p => p.filter(c => c.id !== id)) }
   function updateCol<K extends keyof GridCol>(id: string, key: K, val: GridCol[K]) {
     setGridCols(p => p.map(c => c.id === id ? { ...c, [key]: val } : c))
@@ -408,6 +510,27 @@ export default function ScreenPreviewPage() {
                 </div>
               </div>
             )}
+            {/* 그리드일 때만 헤더 줄 수 선택 */}
+            {screenType === '그리드' && (
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">헤더 줄 수</label>
+                <div className="flex gap-2">
+                  {([1, 2] as (1 | 2)[]).map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setGridHeaderRows(n)}
+                      className={`flex-1 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                        gridHeaderRows === n
+                          ? 'bg-brand-600 text-white border-brand-600'
+                          : 'bg-white text-gray-600 border-gray-300 hover:border-brand-400'
+                      }`}
+                    >
+                      {n}줄 헤더
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 신청서 항목 편집 */}
@@ -490,53 +613,91 @@ export default function ScreenPreviewPage() {
               </div>
               <div className="space-y-1.5">
                 {/* 헤더 */}
-                <div
-                  className="grid text-xs text-gray-500 font-medium px-1 pb-1 border-b border-gray-100"
-                  style={{ gridTemplateColumns: '1fr 72px 56px 32px 24px' }}
-                >
-                  <span>컬럼명</span>
-                  <span className="text-center">유형</span>
-                  <span className="text-center">폭(px)</span>
-                  <span className="text-center text-yellow-500">필수*</span>
-                  <span />
-                </div>
-                {gridCols.map(c => (
-                  <div
-                    key={c.id}
-                    className="grid items-center gap-1"
-                    style={{ gridTemplateColumns: '1fr 72px 56px 32px 24px' }}
-                  >
-                    <input
-                      type="text" value={c.name}
-                      onChange={e => updateCol(c.id, 'name', e.target.value)}
-                      placeholder="컬럼명"
-                      className="input-field text-xs py-1"
-                    />
-                    <select
-                      value={c.type}
-                      onChange={e => updateCol(c.id, 'type', e.target.value)}
-                      className="input-field text-xs py-1"
-                    >
-                      {GRID_COL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                    <input
-                      type="number" value={c.width}
-                      onChange={e => updateCol(c.id, 'width', Number(e.target.value))}
-                      min={40} max={400}
-                      className="input-field text-xs py-1 text-center"
-                    />
-                    <div className="flex justify-center">
-                      <input
-                        type="checkbox" checked={c.required}
-                        onChange={e => updateCol(c.id, 'required', e.target.checked)}
-                        className="accent-yellow-500 w-4 h-4"
-                      />
-                    </div>
-                    <button onClick={() => removeCol(c.id)} className="text-gray-300 hover:text-red-400 flex justify-center">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
+                {/* 1줄: '1fr 64px 68px 48px 32px 24px'
+                    2줄: '1fr 1fr 64px 68px 48px 32px 24px'
+                    → 우측 고정 컬럼(유형·폭·색상·필수·del)은 항상 같은 위치 */}
+                {(() => {
+                  const tpl = gridHeaderRows === 2
+                    ? '1fr 1fr 64px 68px 48px 32px 24px'
+                    : '1fr 64px 68px 48px 32px 24px'
+                  return (
+                    <>
+                      <div
+                        className="grid text-xs text-gray-500 font-medium px-1 pb-1 border-b border-gray-100"
+                        style={{ gridTemplateColumns: tpl }}
+                      >
+                        <span>컬럼명 / 그룹명</span>
+                        {gridHeaderRows === 2 && <span className="text-center">2줄헤더</span>}
+                        <span className="text-center">유형</span>
+                        <span className="text-center">폭(px)</span>
+                        <span className="text-center">색상</span>
+                        <span className="text-center text-yellow-500">필수*</span>
+                        <span />
+                      </div>
+                      {gridCols.map(c => (
+                        <div
+                          key={c.id}
+                          className="grid items-center gap-1"
+                          style={{ gridTemplateColumns: tpl }}
+                        >
+                          <input
+                            type="text" value={c.name}
+                            onChange={e => updateCol(c.id, 'name', e.target.value)}
+                            placeholder="컬럼명 / 그룹명"
+                            className="input-field text-xs py-1"
+                          />
+                          {gridHeaderRows === 2 && (
+                            <input
+                              type="text" value={c.row2 ?? ''}
+                              onChange={e => updateCol(c.id, 'row2', e.target.value || undefined)}
+                              placeholder="(비우면 병합)"
+                              className="input-field text-xs py-1"
+                            />
+                          )}
+                          <select
+                            value={c.type}
+                            onChange={e => updateCol(c.id, 'type', e.target.value)}
+                            className="input-field text-xs py-1"
+                          >
+                            {GRID_COL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                          </select>
+                          <input
+                            type="number" value={c.width}
+                            onChange={e => updateCol(c.id, 'width', Number(e.target.value))}
+                            min={40} max={400}
+                            className="input-field text-xs py-1 text-center"
+                          />
+                          <div className="flex justify-center gap-1">
+                            {(['blue', 'pink', 'gray'] as HeaderColor[]).map(color => (
+                              <button
+                                key={color}
+                                title={{ blue: '파란색', pink: '분홍색', gray: '회색' }[color]}
+                                onClick={() => updateCol(c.id, 'headerColor', color)}
+                                style={{
+                                  width: 13, height: 13, borderRadius: '50%', padding: 0, border: 'none',
+                                  background: HEADER_COLORS[color].bg, cursor: 'pointer',
+                                  boxShadow: c.headerColor === color
+                                    ? `0 0 0 2px ${HEADER_COLORS[color].border}`
+                                    : '0 0 0 1px #bbb',
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex justify-center">
+                            <input
+                              type="checkbox" checked={c.required}
+                              onChange={e => updateCol(c.id, 'required', e.target.checked)}
+                              className="accent-yellow-500 w-4 h-4"
+                            />
+                          </div>
+                          <button onClick={() => removeCol(c.id)} className="text-gray-300 hover:text-red-400 flex justify-center">
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </>
+                  )
+                })()}
               </div>
               <button
                 onClick={addCol}
@@ -587,6 +748,8 @@ export default function ScreenPreviewPage() {
             ) : (
               <ul className="space-y-1 text-xs text-gray-500">
                 <li><span className="text-red-500 font-bold">*</span> 필수 체크 시 컬럼 헤더에 빨간 별표 표시</li>
+                <li>2줄 모드: 2줄헤더 비우면 세로병합, 인접 동일 1줄명이면 가로병합</li>
+                <li>색상 ●●● : 컬럼별 개별 선택 (파란·분홍·회색)</li>
                 <li>폭(px): 미리보기에 실제 반영됨</li>
                 <li>툴바 버튼은 위 "툴바 버튼" 섹션에서 선택</li>
               </ul>
@@ -615,7 +778,7 @@ export default function ScreenPreviewPage() {
             <div className="min-w-[480px]" ref={previewRef}>
               {screenType === '신청서'
                 ? <FormPreview title={screenTitle} fields={formFields} maxCols={maxCols} />
-                : <GridPreview title={screenTitle} cols={gridCols} buttons={gridBtns} />
+                : <GridPreview title={screenTitle} cols={gridCols} buttons={gridBtns} headerRows={gridHeaderRows} />
               }
             </div>
           </div>
